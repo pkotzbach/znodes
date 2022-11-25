@@ -64,10 +64,6 @@ redis.connection.socket = gevent.socket
 
 CONF = {}
 
-# MaxMind databases
-ASN = geoip2.database.Reader('geoip/GeoLite2-ASN.mmdb')
-
-
 def getaddr(conn):
     """
     Sends getaddr message.
@@ -265,7 +261,6 @@ def restart(timestamp, redis_conn):
     Dumps data for the reachable nodes into a JSON file.
     Loads all reachable nodes from Redis into the crawl set.
     Removes keys for all nodes from current crawl.
-    Updates included ASNs.
     Updates excluded networks.
     Updates number of reachable nodes in Redis.
     """
@@ -296,7 +291,6 @@ def restart(timestamp, redis_conn):
 
     redis_pipe.execute()
 
-    update_included_asns(redis_conn)
     update_excluded_networks(redis_conn)
 
     reachable_nodes = len(nodes)
@@ -306,7 +300,7 @@ def restart(timestamp, redis_conn):
     height = dump(timestamp, nodes, redis_conn)
     logging.info(f'Height: {height}')
 
-
+# szuka
 def cron(redis_conn):
     """
     Assigned to a worker to perform the following tasks periodically to
@@ -327,7 +321,7 @@ def cron(redis_conn):
             redis_conn.set('elapsed', elapsed)
             logging.info(f'Elapsed: {elapsed}')
             logging.info('Restarting')
-            restart(now, redis_conn)
+            restart(now, redis_conn) #to
             while int(time.time()) - start < CONF['snapshot_delay']:
                 gevent.sleep(1)
             start = int(time.time())
@@ -346,8 +340,6 @@ def task(redis_conn):
             while redis_conn.get('crawl:master:state') != b'running':
                 gevent.sleep(CONF['socket_timeout'])
 
-                # Refresh included ASNs and excluded networks.
-                set_included_asns(redis_conn)
                 set_excluded_networks(redis_conn)
 
         node = redis_conn.spop('pending')  # Pop random node from set.
@@ -425,11 +417,8 @@ def is_excluded(address):
     In priority order, the rules are:
     - Include onion address
     - Exclude private address
-    - Exclude address without ASN when include_asns/exclude_asns is set
-    - Exclude if address is in exclude_asns
     - Exclude bad address
     - Exclude if address is in exclude_ipv4_networks/exclude_ipv6_networks
-    - Exclude if address is not in include_asns
     - Include address
     """
     if address.endswith('.onion'):
@@ -438,29 +427,13 @@ def is_excluded(address):
     if ip_address(address).is_private:
         return True
 
-    include_asns = CONF['current_include_asns']
     exclude_ipv6_networks = CONF['current_exclude_ipv6_networks']
     exclude_ipv4_networks = CONF['current_exclude_ipv4_networks']
 
-    if None in ([include_asns, exclude_ipv6_networks, exclude_ipv4_networks]):
+    if None in ([exclude_ipv6_networks, exclude_ipv4_networks]):
         logging.warning('Rules not ready')
         return True
 
-    exclude_asns = CONF['exclude_asns']
-
-    asn = None
-    if len(include_asns) > 0 or len(exclude_asns) > 0:
-        try:
-            asn_record = ASN.asn(address)
-        except AddressNotFoundError:
-            asn = None
-        else:
-            asn = f'AS{asn_record.autonomous_system_number}'
-        if asn is None:
-            return True
-
-    if len(exclude_asns) > 0 and asn in exclude_asns:
-        return True
 
     if ':' in address:
         address_family = socket.AF_INET6
@@ -476,51 +449,7 @@ def is_excluded(address):
     if any([(addr & net[1] == net[0]) for net in exclude_ip_networks]):
         return True
 
-    if len(include_asns) > 0 and asn not in include_asns:
-        return True
-
     return False
-
-
-def set_included_asns(redis_conn):
-    """
-    Fetches up-to-date included ASNs from Redis.
-    """
-    asns = redis_conn.get('include-asns')
-    if asns is not None:
-        CONF['current_include_asns'] = eval(asns)
-
-
-def update_included_asns(redis_conn):
-    """
-    Updates included ASNs and stores them Redis.
-    """
-    include_asns = set()
-
-    if CONF['include_asns']:
-        include_asns.update(CONF['include_asns'])
-
-    if CONF['include_asns_from_url']:
-        txt = http_get_txt(CONF['include_asns_from_url'])
-        include_asns.update(list_included_asns(txt))
-
-    logging.info(f'ASNs: {len(include_asns)}')
-    redis_conn.set('include-asns', str(include_asns))
-    set_included_asns(redis_conn)
-
-
-def list_included_asns(txt, asns=None):
-    """
-    Converts list of ASNs from configuration file into a set.
-    """
-    if asns is None:
-        asns = set()
-    lines = txt.strip().split('\n')
-    for line in lines:
-        line = line.strip()
-        if line.startswith('AS'):
-            asns.add(line)
-    return asns
 
 
 def set_excluded_networks(redis_conn):
@@ -614,13 +543,6 @@ def init_conf(argv):
     CONF['nodes_per_ipv6_prefix'] = conf.getint('crawl',
                                                 'nodes_per_ipv6_prefix')
 
-    CONF['include_asns'] = conf_list(conf, 'crawl', 'include_asns')
-    CONF['include_asns_from_url'] = conf.get('crawl', 'include_asns_from_url')
-
-    CONF['current_include_asns'] = None
-
-    CONF['exclude_asns'] = conf_list(conf, 'crawl', 'exclude_asns')
-
     CONF['exclude_ipv4_networks'] = list_excluded_networks(
         conf.get('crawl', 'exclude_ipv4_networks'))
     CONF['exclude_ipv6_networks'] = list_excluded_networks(
@@ -695,7 +617,6 @@ def main(argv):
                 redis_pipe.delete(key)
         redis_pipe.delete('pending')
         redis_pipe.execute()
-        update_included_asns(redis_conn)
         update_excluded_networks(redis_conn)
         set_pending(redis_conn)
         redis_conn.set('crawl:master:state', 'running')
@@ -705,6 +626,7 @@ def main(argv):
     if CONF['master']:
         workers.append(gevent.spawn(cron, redis_conn))
     for _ in range(CONF['workers'] - len(workers)):
+        print("task start")
         workers.append(gevent.spawn(task, redis_conn))
     logging.info(f'Workers: {len(workers)}')
     gevent.joinall(workers)
