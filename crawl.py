@@ -134,7 +134,7 @@ def get_cached_peers(conn, redis_conn):
     """
     Returns cached peering nodes.
     """
-    key = f'peer:{conn.to_addr[0]}-{conn.to_addr[1]}'
+    key = f'peer:{conn.to_addr[0]}-{conn.to_addr[1]}' #adres - port
     peers = redis_conn.get(key)
     if peers:
         peers = eval(peers)
@@ -193,8 +193,10 @@ def connect(key, redis_conn):
         logging.debug(f'Connecting to {conn.to_addr}')
         conn.open()
         version_msg = conn.handshake()
+        logging.debug(f'Connected to {conn.to_addr}')
     except (ProtocolError, ConnectionError, socket.error) as err:
         logging.debug(f'{conn.to_addr}: {err}')
+
 
     redis_pipe = redis_conn.pipeline()
     if version_msg:
@@ -222,6 +224,7 @@ def connect(key, redis_conn):
             redis_pipe.sadd('pending', str(peer))
         redis_pipe.set(key, '')
         redis_pipe.sadd('up', key)
+    logging.debug(f'Closing connection to {conn.to_addr}')
     conn.close()
     redis_pipe.execute()
 
@@ -300,7 +303,7 @@ def restart(timestamp, redis_conn):
     height = dump(timestamp, nodes, redis_conn)
     logging.info(f'Height: {height}')
 
-# szuka
+
 def cron(redis_conn):
     """
     Assigned to a worker to perform the following tasks periodically to
@@ -626,7 +629,6 @@ def main(argv):
     if CONF['master']:
         workers.append(gevent.spawn(cron, redis_conn))
     for _ in range(CONF['workers'] - len(workers)):
-        print("task start")
         workers.append(gevent.spawn(task, redis_conn))
     logging.info(f'Workers: {len(workers)}')
     gevent.joinall(workers)

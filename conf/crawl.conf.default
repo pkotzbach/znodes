@@ -13,17 +13,22 @@ port = 8333
 db = 0
 
 # List of DNS seeders to get a subset of reachable nodes
+# seeders =
+#    seed.bitcoin.sipa.be
+#    dnsseed.bluematt.me
+#    dnsseed.bitcoin.dashjr.org
+#    seed.bitcoinstats.com
+#    seed.bitcoin.jonasschnelli.ch
+#    seed.btc.petertodd.org
+#    seed.bitcoin.sprovoost.nl
+#    dnsseed.emzy.de
+#    seed.bitcoin.wiz.biz
+#    seed.bitnodes.io
 seeders =
-    seed.bitcoin.sipa.be
-    dnsseed.bluematt.me
-    dnsseed.bitcoin.dashjr.org
-    seed.bitcoinstats.com
-    seed.bitcoin.jonasschnelli.ch
-    seed.btc.petertodd.org
-    seed.bitcoin.sprovoost.nl
-    dnsseed.emzy.de
-    seed.bitcoin.wiz.biz
-    seed.bitnodes.io
+    mainnet.z.cash
+    dnsseed.str4d.xyz
+    mainnet.is.yolo.money
+    mainnet.seeder.zfnd.org
 
 # Number of concurrent workers (greenlets)
 workers = 700
